@@ -1,0 +1,44 @@
+name: Import source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.bootstrap/**'
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore source tree
+        shell: pwsh
+        run: |
+          $parts = Get-ChildItem '.bootstrap/part*.txt' | Sort-Object Name
+          if (-not $parts) { throw 'No bootstrap parts found.' }
+          $b64 = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ''
+          $bytes = [Convert]::FromBase64String($b64)
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\source.zip", $bytes)
+          $dest = "$env:RUNNER_TEMP\source"
+          Expand-Archive "$env:RUNNER_TEMP\source.zip" -DestinationPath $dest -Force
+          Get-ChildItem $dest -Force | ForEach-Object {
+            Copy-Item $_.FullName -Destination $PWD -Recurse -Force
+          }
+          Remove-Item '.bootstrap' -Recurse -Force
+          Remove-Item '.github/workflows/import-source.yml' -Force
+
+      - name: Commit imported source
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: import complete ProcDomainSniffer source"
+          git push
