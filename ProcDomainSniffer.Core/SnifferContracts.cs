@@ -22,6 +22,7 @@ public sealed record DomainObservation(
     string? Remote,
     IReadOnlyList<string>? ResolvedIps = null);
 
+
 public sealed record NetworkPacketObservation(
     DateTimeOffset Timestamp,
     int Pid,

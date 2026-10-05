@@ -1,0 +1,30 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Restore
+        run: dotnet restore .\ProcDomainSniffer.GUI\ProcDomainSniffer.GUI.csproj -r win-x64
+      - name: Build
+        run: dotnet build .\ProcDomainSniffer.GUI\ProcDomainSniffer.GUI.csproj -c Release -r win-x64 --no-restore
+      - name: Publish single-file EXE
+        shell: pwsh
+        run: .\build-gui.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ProcDomainSniffer.GUI
+          path: output/ProcDomainSniffer.GUI.exe

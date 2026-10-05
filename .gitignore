@@ -4,3 +4,10 @@ output/
 .publish-temp/
 .vs/
 *.user
+*.suo
+*.pdb
+*.log
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -8,6 +8,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>ProcDomainSniffer.GUI</AssemblyName>
     <RootNamespace>ProcDomainSniffer.GUI</RootNamespace>
+
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
@@ -16,8 +17,13 @@
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>None</DebugType>
     <DebugSymbols>false</DebugSymbols>
+    <ApplicationIcon>Assets\ProcDomainSniffer.ico</ApplicationIcon>
   </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\ProcDomainSniffer.Core\ProcDomainSniffer.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\ProcDomainSnifferIcon.png" />
   </ItemGroup>
 </Project>

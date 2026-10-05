@@ -27,6 +27,7 @@ public sealed class DomainIpRow
     public string Sources { get; set; } = "";
 }
 
+
 public sealed class NetworkPacketRow
 {
     public string Time { get; set; } = "";
@@ -36,6 +37,10 @@ public sealed class NetworkPacketRow
     public string Protocol { get; set; } = "";
     public string Domain { get; set; } = "—";
     public long Requests { get; set; } = 1;
+
+    // Normalized endpoint from the target process point of view. These fields are
+    // intentionally not displayed; they are used to collapse request/response
+    // traffic into one unique row when "Ignore source IP" is enabled.
     public string RemoteIp { get; set; } = "";
     public int RemotePort { get; set; }
 }
