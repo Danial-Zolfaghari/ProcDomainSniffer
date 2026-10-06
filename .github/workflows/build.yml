@@ -1,4 +1,4 @@
-name: Windows Build
+name: Windows Build & Test
 
 on:
   push:
@@ -14,16 +14,34 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Restore
+
+      - name: Restore GUI
         run: dotnet restore .\ProcDomainSniffer.GUI\ProcDomainSniffer.GUI.csproj -r win-x64
-      - name: Build
+
+      - name: Restore tests
+        run: dotnet restore .\ProcDomainSniffer.Tests\ProcDomainSniffer.Tests.csproj
+
+      - name: Unit tests
+        run: dotnet test .\ProcDomainSniffer.Tests\ProcDomainSniffer.Tests.csproj -c Release --no-restore --verbosity normal
+
+      - name: Build GUI
         run: dotnet build .\ProcDomainSniffer.GUI\ProcDomainSniffer.GUI.csproj -c Release -r win-x64 --no-restore
+
       - name: Publish single-file EXE
         shell: pwsh
         run: .\build-gui.ps1
+
+      - name: Verify artifact
+        shell: pwsh
+        run: |
+          if (-not (Test-Path './output/ProcDomainSniffer.GUI.exe')) {
+            throw 'ProcDomainSniffer.GUI.exe is missing.'
+          }
+
       - uses: actions/upload-artifact@v4
         with:
           name: ProcDomainSniffer.GUI
