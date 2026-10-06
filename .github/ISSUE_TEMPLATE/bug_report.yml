@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Use non-sensitive example data.
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+    validations:
+      required: true
+  - type: input
+    id: tshark
+    attributes:
+      label: Wireshark / TShark version
