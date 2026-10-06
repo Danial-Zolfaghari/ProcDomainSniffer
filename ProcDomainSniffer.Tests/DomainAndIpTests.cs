@@ -1,3 +1,4 @@
+using Xunit;
 using ProcDomainSniffer.Core;
 
 namespace ProcDomainSniffer.Tests;
@@ -6,7 +7,7 @@ public sealed class DomainUtilTests
 {
     [Theory]
     [InlineData(" Example.COM. ", "example.com")]
-    [InlineData(""Sub.Example.com"", "sub.example.com")]
+    [InlineData("\"Sub.Example.com\"", "sub.example.com")]
     [InlineData("", "")]
     public void Normalize_CanonicalizesDomain(string input, string expected)
         => Assert.Equal(expected, DomainUtil.Normalize(input));
