@@ -29,6 +29,7 @@ jobs:
         run: |
           if ($env:GITHUB_REF -like 'refs/tags/*') { $tag = $env:GITHUB_REF_NAME } else { $tag = 'v0.1.0' }
           "tag=$tag" >> $env:GITHUB_OUTPUT
+          $PSNativeCommandUseErrorActionPreference = $false
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { "exists=true" >> $env:GITHUB_OUTPUT } else { "exists=false" >> $env:GITHUB_OUTPUT }
 
