@@ -202,3 +202,10 @@ Use packet/process monitoring only on systems and networks you own or are explic
 
 **Danial Zolfaghari**  
 GitHub: [@Danial-Zolfaghari](https://github.com/Danial-Zolfaghari)
+
+---
+
+## Author
+
+**Danial Zolfaghari** — [@Danial-Zolfaghari](https://github.com/Danial-Zolfaghari)
+
