@@ -42,7 +42,7 @@ jobs:
             throw 'ProcDomainSniffer.GUI.exe is missing.'
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ProcDomainSniffer.GUI
           path: output/ProcDomainSniffer.GUI.exe
