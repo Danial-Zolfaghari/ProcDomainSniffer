@@ -16,6 +16,12 @@
   <img alt="UI" src="https://img.shields.io/badge/UI-WPF-2D7D9A">
   <img alt="Capture" src="https://img.shields.io/badge/Capture-TShark%20%2F%20Npcap-1679A7">
 </p>
+<p align="center">
+  <a href="https://github.com/Danial-Zolfaghari/ProcDomainSniffer/actions/workflows/build.yml"><img alt="CI" src="https://github.com/Danial-Zolfaghari/ProcDomainSniffer/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/Danial-Zolfaghari/ProcDomainSniffer/releases"><img alt="Release" src="https://img.shields.io/github/v/release/Danial-Zolfaghari/ProcDomainSniffer?display_name=tag&sort=semver"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/Danial-Zolfaghari/ProcDomainSniffer"></a>
+</p>
+
 
 ---
 
