@@ -31,6 +31,21 @@
 
 It combines process selection, capture telemetry, DNS observations, resolved IP tracking, network-flow summaries, filtering, activity logs, and export/copy workflows in one desktop workspace.
 
+## Download
+
+The current Windows build is available from [GitHub Releases](https://github.com/Danial-Zolfaghari/ProcDomainSniffer/releases/latest).
+
+Release assets include:
+
+- `ProcDomainSniffer.GUI.exe` — self-contained Windows x64 executable
+- `SHA256SUMS.txt` — SHA-256 checksum for verification
+
+Verify the executable in PowerShell:
+
+```powershell
+Get-FileHash .\ProcDomainSniffer.GUI.exe -Algorithm SHA256
+```
+
 ## Architecture
 
 ```mermaid
