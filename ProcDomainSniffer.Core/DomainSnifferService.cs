@@ -1067,8 +1067,10 @@ internal static class TsharkLocator
 {
     public static string? Find(string? requested)
     {
-        if (!string.IsNullOrWhiteSpace(requested))
-            return File.Exists(requested) ? Path.GetFullPath(requested) : requested;
+        // An invalid user-supplied path must not masquerade as an installed TShark.
+        // Fall back to normal discovery rather than returning a nonexistent path.
+        if (!string.IsNullOrWhiteSpace(requested) && File.Exists(requested))
+            return Path.GetFullPath(requested);
 
         var env = Environment.GetEnvironmentVariable("TSHARK");
         if (!string.IsNullOrWhiteSpace(env) && File.Exists(env)) return env;

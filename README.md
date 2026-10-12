@@ -167,6 +167,42 @@ output/ProcDomainSniffer.GUI.exe
 
 The published executable is self-contained, so the target machine does not need a separate .NET runtime installation. **TShark + Npcap are still runtime dependencies.**
 
+### Troubleshooting: PowerShell script execution is disabled
+
+If running `build-gui.ps1` fails with:
+
+```text
+cannot be loaded because running scripts is disabled on this system
+```
+
+PowerShell may be configured to block local scripts. From the repository root,
+run the following **in the same PowerShell window**:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+.\build-gui.ps1
+```
+
+The `Process` scope applies only to the current PowerShell session and does
+**not** change the persistent execution policy. Close the terminal to discard
+it. If the PC is managed by an organization, enforced Group Policy may still
+block the script. Only run scripts you trust.
+
+### First-run TShark setup
+
+If `tshark.exe` is missing, the GUI detects it at startup and **asks permission**
+to install the official Wireshark package via Windows Package Manager (`winget`).
+The **Capture Settings** tab also offers an **Install TShark** button.
+Installation opens the Wireshark installer interactively so you can select
+**Npcap** if needed; Administrator approval and an internet connection may be
+required. No third-party executable is downloaded directly by this app.
+
+After installation, the GUI locates `tshark.exe` and refreshes capture interfaces.
+If automatic installation fails or `winget` is unavailable, use the official
+[Wireshark downloads](https://www.wireshark.org/download.html) page and then
+return to the Capture Settings tab. The GUI can still collect DNS ETW events
+without TShark, but TShark-dependent capture features are unavailable.
+
 ## Build manually
 
 ```powershell

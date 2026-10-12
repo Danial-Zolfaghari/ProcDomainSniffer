@@ -52,6 +52,7 @@ public partial class MainWindow : Window
     private bool _uiReady;
     private bool _processRefreshInProgress;
     private bool _isClosing;
+    private bool _tsharkInstallInProgress;
     private string _lastProcessSnapshotSignature = string.Empty;
     private string? _activeCaptureTargetName;
 
@@ -143,6 +144,14 @@ public partial class MainWindow : Window
         SetProcessRefreshInterval();
         _processRefreshTimer.Start();
         _networkUiTimer.Start();
+
+        // On first launch, offer an interactive installation instead of silently
+        // downloading or executing software without the user's approval.
+        if (DomainSnifferService.FindTshark(TsharkPathTextBox.Text) is not { } tshark || !File.Exists(tshark))
+        {
+            WorkspaceTabs.SelectedIndex = 1;
+            await InstallTsharkAsync();
+        }
     }
 
     private async void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -180,7 +189,113 @@ public partial class MainWindow : Window
     private void UpdateTsharkStatus()
     {
         var path = DomainSnifferService.FindTshark(TsharkPathTextBox.Text);
-        TsharkStatusText.Text = path is null ? "TShark: not found" : $"TShark: {path}";
+        var installed = path is not null && File.Exists(path);
+        TsharkStatusText.Text = installed ? $"TShark: {path}" : "TShark: not found";
+        InstallTsharkButton.IsEnabled = !installed && !_tsharkInstallInProgress;
+        TsharkInstallStatusText.Text = _tsharkInstallInProgress
+            ? "Installing..."
+            : installed ? "Installed" : "Not installed";
+    }
+
+    private void TsharkPathTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_uiReady) UpdateTsharkStatus();
+    }
+
+    private async void InstallTsharkButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        await InstallTsharkAsync();
+    }
+
+    private async Task InstallTsharkAsync()
+    {
+        if (_tsharkInstallInProgress || _isClosing) return;
+
+        var existing = DomainSnifferService.FindTshark(TsharkPathTextBox.Text);
+        if (existing is not null && File.Exists(existing))
+        {
+            TsharkPathTextBox.Text = existing;
+            UpdateTsharkStatus();
+            return;
+        }
+
+        var choice = MessageBox.Show(
+            this,
+            "TShark was not found. Install Wireshark from the official winget package now?\n\n" +
+            "The Wireshark installer will open so you can choose Npcap, which is needed " +
+            "for packet capture. Internet access and Windows administrator approval may be required.",
+            "Install TShark / Wireshark",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (choice != MessageBoxResult.Yes) return;
+
+        _tsharkInstallInProgress = true;
+        UpdateTsharkStatus();
+        AddLog("INFO", "Starting interactive Wireshark installation through Windows Package Manager.");
+
+        try
+        {
+            var result = await WiresharkInstaller.InstallAsync();
+            if (_isClosing) return;
+
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException(
+                    $"winget exited with code {result.ExitCode}. " +
+                    result.Output[^Math.Min(result.Output.Length, 900)..].Trim());
+
+            var tshark = DomainSnifferService.FindTshark();
+            if (tshark is null || !File.Exists(tshark))
+                throw new InvalidOperationException(
+                    "winget completed, but tshark.exe was not found. If Wireshark was installed to a " +
+                    "custom folder, use Browse to select its tshark.exe.");
+
+            TsharkPathTextBox.Text = tshark;
+            await LoadInterfacesAsync();
+            if (_isClosing) return;
+
+            AddLog("INFO", "TShark installed: " + tshark);
+            var missingInterfaces = InterfacesListBox.Items.Count <= 1;
+            MessageBox.Show(
+                this,
+                missingInterfaces
+                    ? "TShark was found, but no capture interfaces were detected. " +
+                      "Make sure Npcap is installed, then restart the application."
+                    : "TShark installation completed and capture interfaces were refreshed.",
+                "TShark setup",
+                MessageBoxButton.OK,
+                missingInterfaces ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            if (_isClosing) return;
+            AddLog("ERROR", "Wireshark installation failed: " + ex.Message);
+            var openWebsite = MessageBox.Show(
+                this,
+                "Automatic installation could not be completed.\n\n" +
+                ex.Message + "\n\nOpen the official Wireshark download page instead?",
+                "TShark installation failed",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (openWebsite == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo("https://www.wireshark.org/download.html")
+                    {
+                        UseShellExecute = true
+                    });
+                }
+                catch (Exception browserEx)
+                {
+                    AddLog("ERROR", "Could not open Wireshark download page: " + browserEx.Message);
+                }
+            }
+        }
+        finally
+        {
+            _tsharkInstallInProgress = false;
+            if (!_isClosing) UpdateTsharkStatus();
+        }
     }
 
     private async Task LoadInterfacesAsync()

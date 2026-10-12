@@ -278,9 +278,14 @@
                                                     <ColumnDefinition Width="8" />
                                                     <ColumnDefinition Width="88" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBox x:Name="TsharkPathTextBox" Grid.Column="0" />
+                                                <TextBox x:Name="TsharkPathTextBox" Grid.Column="0" TextChanged="TsharkPathTextBox_OnTextChanged" />
                                                 <Button Grid.Column="2" Content="Browse" Style="{StaticResource GhostButtonStyle}" Click="BrowseTsharkButton_OnClick" />
                                             </Grid>
+                                            <WrapPanel Margin="0,10,0,0">
+                                                <Button x:Name="InstallTsharkButton" Content="Install TShark" Style="{StaticResource PrimaryButtonStyle}" Click="InstallTsharkButton_OnClick" Margin="0,0,10,0" />
+                                                <TextBlock x:Name="TsharkInstallStatusText" Text="Checking TShark..." Style="{StaticResource MutedText}" VerticalAlignment="Center" />
+                                            </WrapPanel>
+                                            <TextBlock Text="Uses winget to install Wireshark. Choose Npcap in the installer if it is missing." Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,7,0,0" />
 
                                             <TextBlock Text="OUTPUT DIRECTORY" Style="{StaticResource TinyLabel}" Margin="0,16,0,5" />
                                             <Grid>
