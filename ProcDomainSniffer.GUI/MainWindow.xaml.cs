@@ -53,6 +53,7 @@ public partial class MainWindow : Window
     private bool _processRefreshInProgress;
     private bool _isClosing;
     private bool _tsharkInstallInProgress;
+    private bool _captureInterfacesReady;
     private string _lastProcessSnapshotSignature = string.Empty;
     private string? _activeCaptureTargetName;
 
@@ -147,10 +148,25 @@ public partial class MainWindow : Window
 
         // On first launch, offer an interactive installation instead of silently
         // downloading or executing software without the user's approval.
-        if (DomainSnifferService.FindTshark(TsharkPathTextBox.Text) is not { } tshark || !File.Exists(tshark))
+        if (!CapturePrerequisites.Check(TsharkPathTextBox.Text).TsharkReady)
         {
             WorkspaceTabs.SelectedIndex = 1;
             await InstallTsharkAsync();
+        }
+
+        var prerequisites = CapturePrerequisites.Check(TsharkPathTextBox.Text);
+        if (!_isClosing && !prerequisites.NpcapReady)
+        {
+            WorkspaceTabs.SelectedIndex = 1;
+            MessageBox.Show(
+                this,
+                "Npcap is missing or its capture driver is not running. All capture is disabled until " +
+                "both TShark and Npcap are working.\n\n" +
+                "Install or repair Npcap using the official download button in Capture Settings, " +
+                "then click Recheck.",
+                "Npcap required",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
     }
 
@@ -188,18 +204,73 @@ public partial class MainWindow : Window
 
     private void UpdateTsharkStatus()
     {
-        var path = DomainSnifferService.FindTshark(TsharkPathTextBox.Text);
-        var installed = path is not null && File.Exists(path);
-        TsharkStatusText.Text = installed ? $"TShark: {path}" : "TShark: not found";
-        InstallTsharkButton.IsEnabled = !installed && !_tsharkInstallInProgress;
+        var prerequisites = CapturePrerequisites.Check(TsharkPathTextBox.Text);
+        TsharkStatusText.Text = prerequisites.TsharkReady
+            ? $"TShark: {prerequisites.TsharkPath}"
+            : "TShark: not found";
+
         TsharkInstallStatusText.Text = _tsharkInstallInProgress
             ? "Installing..."
-            : installed ? "Installed" : "Not installed";
+            : prerequisites.TsharkReady ? "Installed" : "Missing";
+        NpcapInstallStatusText.Text = !prerequisites.NpcapInstalled
+            ? "Npcap: not installed"
+            : prerequisites.NpcapRunning ? "Npcap: running" : "Npcap: driver stopped";
+
+        InstallTsharkButton.IsEnabled = !prerequisites.TsharkReady && !_tsharkInstallInProgress;
+        InstallNpcapButton.IsEnabled = !prerequisites.NpcapReady && !_tsharkInstallInProgress;
+        RecheckPrerequisitesButton.IsEnabled = !_tsharkInstallInProgress;
+
+        var ready = prerequisites.CanCapture && _captureInterfacesReady && !_tsharkInstallInProgress;
+        StartButton.IsEnabled = ready && _service?.IsRunning != true;
+        CaptureRequirementStatusText.Text = ready
+            ? "Capture ready: TShark and Npcap driver are available."
+            : !prerequisites.CanCapture
+                ? prerequisites.BlockingReason
+                : "Capture blocked: no Npcap interfaces detected. Install/repair Npcap and click Recheck.";
+        StartButton.ToolTip = CaptureRequirementStatusText.Text;
     }
 
     private void TsharkPathTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_uiReady) UpdateTsharkStatus();
+        if (!_uiReady) return;
+        _captureInterfacesReady = false;
+        UpdateTsharkStatus();
+    }
+
+    private async void TsharkPathTextBox_OnLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_uiReady) await LoadInterfacesAsync();
+    }
+
+    private async void RecheckPrerequisitesButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        await LoadInterfacesAsync();
+    }
+
+    private void InstallNpcapButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            this,
+            "Npcap is the packet-capture driver required by TShark; Nmap is not required.\n\n" +
+            "Download and install Npcap from its official website. " +
+            "Administrator approval or a restart may be necessary. " +
+            "Return to Capture Settings and click Recheck after installation.",
+            "Install Npcap",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("https://npcap.com/#download")
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            AddLog("ERROR", "Could not open the Npcap download website: " + ex.Message);
+            MessageBox.Show(this, "Open https://npcap.com/ in your browser.", "Npcap download", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private async void InstallTsharkButton_OnClick(object sender, RoutedEventArgs e)
@@ -254,16 +325,16 @@ public partial class MainWindow : Window
             if (_isClosing) return;
 
             AddLog("INFO", "TShark installed: " + tshark);
-            var missingInterfaces = InterfacesListBox.Items.Count <= 1;
+            var ready = CapturePrerequisites.Check(TsharkPathTextBox.Text).CanCapture && _captureInterfacesReady;
             MessageBox.Show(
                 this,
-                missingInterfaces
-                    ? "TShark was found, but no capture interfaces were detected. " +
-                      "Make sure Npcap is installed, then restart the application."
-                    : "TShark installation completed and capture interfaces were refreshed.",
+                ready
+                    ? "TShark and Npcap are ready. Capture is now available."
+                    : "TShark was installed, but Capture is still blocked. " +
+                      "Install/repair Npcap and click Recheck in Capture Settings.",
                 "TShark setup",
                 MessageBoxButton.OK,
-                missingInterfaces ? MessageBoxImage.Warning : MessageBoxImage.Information);
+                ready ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
         catch (Exception ex)
         {
@@ -300,21 +371,32 @@ public partial class MainWindow : Window
 
     private async Task LoadInterfacesAsync()
     {
+        var checkedPath = TsharkPathTextBox.Text;
+        _captureInterfacesReady = false;
         InterfacesListBox.Items.Clear();
         InterfacesListBox.Items.Add(new TsharkInterface("all", "All Npcap interfaces", true));
+        UpdateTsharkStatus();
 
-        try
+        if (CapturePrerequisites.Check(checkedPath).CanCapture)
         {
-            var interfaces = await DomainSnifferService.GetInterfacesAsync(TsharkPathTextBox.Text);
-            foreach (var iface in interfaces)
-                InterfacesListBox.Items.Add(iface);
-        }
-        catch (Exception ex)
-        {
-            AddLog("WARN", "Failed to enumerate interfaces: " + ex.Message);
+            try
+            {
+                var interfaces = await DomainSnifferService.GetInterfacesAsync(checkedPath);
+                if (_isClosing || checkedPath != TsharkPathTextBox.Text) return;
+
+                foreach (var iface in interfaces)
+                    InterfacesListBox.Items.Add(iface);
+                _captureInterfacesReady = interfaces.Any(iface => iface.IsNpcap);
+            }
+            catch (Exception ex)
+            {
+                if (!_isClosing) AddLog("WARN", "Failed to enumerate Npcap interfaces: " + ex.Message);
+            }
         }
 
+        if (_isClosing) return;
         InterfacesListBox.SelectedIndex = 0;
+        UpdateTsharkStatus();
     }
 
     private void SetProcessRefreshInterval()
@@ -593,6 +675,22 @@ public partial class MainWindow : Window
     {
         try
         {
+            var prerequisites = CapturePrerequisites.Check(TsharkPathTextBox.Text);
+            if (!prerequisites.CanCapture || !_captureInterfacesReady)
+            {
+                WorkspaceTabs.SelectedIndex = 1;
+                MessageBox.Show(
+                    this,
+                    prerequisites.CanCapture
+                        ? "Capture blocked: Npcap interfaces are not ready. Click Recheck in Capture Settings."
+                        : prerequisites.BlockingReason,
+                    "Capture dependencies missing",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                UpdateTsharkStatus();
+                return;
+            }
+
             if (!DomainSnifferService.IsAdministrator())
             {
                 MessageBox.Show(this, "GUI را با Run as administrator اجرا کن تا ETW و Npcap درست کار کنند.", "Administrator required", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -633,8 +731,8 @@ public partial class MainWindow : Window
                 _service = null;
             }
 
-            StartButton.IsEnabled = true;
             StopButton.IsEnabled = false;
+            UpdateTsharkStatus();
             StatusTextBlock.Text = "Start failed.";
             SetProcessRefreshInterval();
 
@@ -668,8 +766,8 @@ public partial class MainWindow : Window
             _service.NetworkPacket -= ServiceOnNetworkPacket;
             _service.TargetsChanged -= ServiceOnTargetsChanged;
             _service = null;
-            StartButton.IsEnabled = true;
             StopButton.IsEnabled = false;
+            UpdateTsharkStatus();
             StatusTextBlock.Text = "Stopped.";
             SetProcessRefreshInterval();
         }

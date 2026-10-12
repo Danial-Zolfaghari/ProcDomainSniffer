@@ -45,12 +45,30 @@ public sealed class DomainSnifferService : IAsyncDisposable
         if (options.Pid is null && string.IsNullOrWhiteSpace(options.ProcessName))
             throw new InvalidOperationException("Either PID or process name must be specified.");
 
+        // Fail closed BEFORE allocating ETW sessions, collectors or output files.
+        var prerequisites = CapturePrerequisites.Check(options.TsharkPath);
+        if (!prerequisites.CanCapture)
+            throw new InvalidOperationException(prerequisites.BlockingReason);
+
+        IReadOnlyList<TsharkInterface> availableInterfaces;
+        try
+        {
+            availableInterfaces = await TsharkLocator.GetInterfacesAsync(prerequisites.TsharkPath!);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Capture blocked: unable to enumerate Npcap interfaces with TShark. " + ex.Message, ex);
+        }
+
+        if (!availableInterfaces.Any(iface => iface.IsNpcap))
+            throw new InvalidOperationException("Capture blocked: TShark cannot see any Npcap capture interfaces. Check or repair Npcap.");
+
         _isRunning = true;
         _runCts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
 
         try
         {
-            _tsharkPath = TsharkLocator.Find(options.TsharkPath);
+            _tsharkPath = prerequisites.TsharkPath;
             Directory.CreateDirectory(options.OutputDirectory);
 
             _targets = new TargetTracker(options.Pid, options.ProcessName, options.IncludeChildren, EmitTargetsChanged);
@@ -68,15 +86,10 @@ public sealed class DomainSnifferService : IAsyncDisposable
             StartKernelEtw();
             StartDnsEtw();
 
-            if (_tsharkPath is null)
-            {
-                WriteLog("WARN", "tshark.exe پیدا نشد؛ فعلاً فقط DNS ETW فعال است. TLS SNI / direct DNS packet fallback غیرفعال است.");
-            }
-            else
-            {
-                _tshark = new TsharkCollector(_tsharkPath, options, _flows, _sink, WriteLog, OnNetworkPacket);
-                await _tshark.StartAsync(_runCts.Token);
-            }
+            // Preflight above guarantees both TShark and the Npcap driver are ready.
+            // Never enter a degraded ETW-only capture mode.
+            _tshark = new TsharkCollector(_tsharkPath!, options, _flows, _sink, WriteLog, OnNetworkPacket);
+            await _tshark.StartAsync(_runCts.Token);
 
             _ = Task.Run(() => MaintenanceLoopAsync(_runCts.Token));
             WriteLog("INFO", "[READY] Capturing started.");

@@ -129,8 +129,8 @@ sequenceDiagram
 
 - Windows 10 or Windows 11 x64
 - **Wireshark / TShark** installed
-- **Npcap** installed and available to TShark
-- Administrator privileges are recommended/required for packet capture depending on the local Npcap configuration
+- **Npcap** installed, driver service running, and at least one Npcap interface visible to TShark
+- Administrator privileges for ETW and capture; the GUI must be run as administrator
 
 ### Build requirements
 
@@ -197,11 +197,25 @@ Installation opens the Wireshark installer interactively so you can select
 **Npcap** if needed; Administrator approval and an internet connection may be
 required. No third-party executable is downloaded directly by this app.
 
-After installation, the GUI locates `tshark.exe` and refreshes capture interfaces.
-If automatic installation fails or `winget` is unavailable, use the official
-[Wireshark downloads](https://www.wireshark.org/download.html) page and then
-return to the Capture Settings tab. The GUI can still collect DNS ETW events
-without TShark, but TShark-dependent capture features are unavailable.
+After installation, the GUI locates `tshark.exe`, checks the Npcap driver
+service and refreshes capture interfaces. **Capture is completely disabled**
+(including ETW-only collection) unless TShark, the running Npcap driver and
+at least one Npcap interface are all available. The backend checks these
+requirements again before opening any capture session.
+
+For a manual interactive Wireshark installation you can run:
+
+```powershell
+winget install --id WiresharkFoundation.Wireshark --exact --interactive
+```
+
+Choose the **Npcap** component in the Wireshark installer. If TShark is already
+installed but Npcap is missing or its driver is stopped, click **Get Npcap**
+in Capture Settings to open the [official Npcap download](https://npcap.com/),
+install/repair it, and click **Recheck**. Nmap is a separate network scanner
+and is **not** required. If `winget` is unavailable, download Wireshark
+from the official [Wireshark downloads](https://www.wireshark.org/download.html)
+page. Administrative privileges and a reboot may be necessary.
 
 ## Build manually
 
