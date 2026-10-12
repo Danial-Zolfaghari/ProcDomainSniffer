@@ -1,3 +1,4 @@
+using Xunit;
 using ProcDomainSniffer.Core;
 
 namespace ProcDomainSniffer.Tests;
