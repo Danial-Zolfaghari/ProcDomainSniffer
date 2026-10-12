@@ -54,6 +54,7 @@ public partial class MainWindow : Window
     private bool _isClosing;
     private bool _tsharkInstallInProgress;
     private bool _captureInterfacesReady;
+    private InstallationConsoleWindow? _installerConsole;
     private string _lastProcessSnapshotSignature = string.Empty;
     private string? _activeCaptureTargetName;
 
@@ -172,6 +173,15 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // Prevent shutting down the WPF dispatcher in the middle of an
+        // interactive setup and orphaning its progress UI.
+        if (_tsharkInstallInProgress)
+        {
+            e.Cancel = true;
+            _installerConsole?.Activate();
+            return;
+        }
+
         _isClosing = true;
         _processRefreshTimer.Stop();
         _networkUiTimer.Stop();
@@ -293,8 +303,8 @@ public partial class MainWindow : Window
         var choice = MessageBox.Show(
             this,
             "TShark was not found. Install Wireshark from the official winget package now?\n\n" +
-            "The Wireshark installer will open so you can choose Npcap, which is needed " +
-            "for packet capture. Internet access and Windows administrator approval may be required.",
+            "A separate live installation console will show real winget output. " +
+            "The interactive Wireshark setup may also open to install Npcap.",
             "Install TShark / Wireshark",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
@@ -304,63 +314,70 @@ public partial class MainWindow : Window
         UpdateTsharkStatus();
         AddLog("INFO", "Starting interactive Wireshark installation through Windows Package Manager.");
 
+        var console = new InstallationConsoleWindow { Owner = this };
+        _installerConsole = console;
+        console.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_installerConsole, console))
+                _installerConsole = null;
+        };
+        console.Show();
+
         try
         {
-            var result = await WiresharkInstaller.InstallAsync();
-            if (_isClosing) return;
+            console.SetStage("Starting winget. Follow the Wireshark setup dialog if it appears...");
+            console.AppendSystem("Launching Windows Package Manager.");
+            var result = await WiresharkInstaller.InstallAsync(
+                (line, isError) => console.AppendOutput(line, isError));
 
+            console.AppendSystem($"winget process ended with exit code {result.ExitCode}.");
             if (result.ExitCode != 0)
                 throw new InvalidOperationException(
-                    $"winget exited with code {result.ExitCode}. " +
+                    $"winget failed with exit code {result.ExitCode}. " +
                     result.Output[^Math.Min(result.Output.Length, 900)..].Trim());
 
+            console.SetStage("Checking TShark executable...");
+            console.AppendSystem("Locating tshark.exe after installation.");
             var tshark = DomainSnifferService.FindTshark();
             if (tshark is null || !File.Exists(tshark))
                 throw new InvalidOperationException(
-                    "winget completed, but tshark.exe was not found. If Wireshark was installed to a " +
-                    "custom folder, use Browse to select its tshark.exe.");
+                    "winget exited successfully but tshark.exe was not found. " +
+                    "If Wireshark was installed to a custom directory, use Browse in Capture Settings.");
 
             TsharkPathTextBox.Text = tshark;
-            await LoadInterfacesAsync();
-            if (_isClosing) return;
+            console.AppendSystem("TShark detected: " + tshark);
 
-            AddLog("INFO", "TShark installed: " + tshark);
-            var ready = CapturePrerequisites.Check(TsharkPathTextBox.Text).CanCapture && _captureInterfacesReady;
-            MessageBox.Show(
-                this,
-                ready
-                    ? "TShark and Npcap are ready. Capture is now available."
-                    : "TShark was installed, but Capture is still blocked. " +
-                      "Install/repair Npcap and click Recheck in Capture Settings.",
-                "TShark setup",
-                MessageBoxButton.OK,
-                ready ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            console.SetStage("Checking Npcap driver and capture interfaces...");
+            var prerequisites = CapturePrerequisites.Check(tshark);
+            console.AppendSystem(
+                $"Npcap installed: {prerequisites.NpcapInstalled}; driver running: {prerequisites.NpcapRunning}.");
+            await LoadInterfacesAsync();
+
+            var ready = CapturePrerequisites.Check(tshark).CanCapture && _captureInterfacesReady;
+            console.AppendSystem(
+                $"Npcap interfaces detected: {InterfacesListBox.Items.OfType<TsharkInterface>().Count(x => x.IsNpcap && x.Id != "all")}.");
+
+            if (ready)
+            {
+                AddLog("INFO", "TShark and Npcap installation verified.");
+                console.Complete(true, "Installation verified. TShark and Npcap are ready; capture is enabled.");
+            }
+            else
+            {
+                AddLog("WARN", "TShark installed but capture prerequisites are incomplete.");
+                console.AppendSystem(
+                    "Install or repair Npcap from https://npcap.com/ if it is missing. " +
+                    "Then return to Capture Settings and click Recheck.");
+                console.Complete(false, "TShark installed, but Npcap or capture interfaces are not ready.");
+            }
         }
         catch (Exception ex)
         {
-            if (_isClosing) return;
             AddLog("ERROR", "Wireshark installation failed: " + ex.Message);
-            var openWebsite = MessageBox.Show(
-                this,
-                "Automatic installation could not be completed.\n\n" +
-                ex.Message + "\n\nOpen the official Wireshark download page instead?",
-                "TShark installation failed",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (openWebsite == MessageBoxResult.Yes)
-            {
-                try
-                {
-                    Process.Start(new ProcessStartInfo("https://www.wireshark.org/download.html")
-                    {
-                        UseShellExecute = true
-                    });
-                }
-                catch (Exception browserEx)
-                {
-                    AddLog("ERROR", "Could not open Wireshark download page: " + browserEx.Message);
-                }
-            }
+            console.AppendSystem("ERROR: " + ex);
+            console.AppendSystem(
+                "Fallback: https://www.wireshark.org/download.html (official Wireshark installer).");
+            console.Complete(false, "Installation failed. See the error above or use the official download.");
         }
         finally
         {

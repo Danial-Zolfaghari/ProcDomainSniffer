@@ -193,6 +193,13 @@ block the script. Only run scripts you trust.
 If `tshark.exe` is missing, the GUI detects it at startup and **asks permission**
 to install the official Wireshark package via Windows Package Manager (`winget`).
 The **Capture Settings** tab also offers an **Install TShark** button.
+After confirmation, a dedicated, non-modal **Installation Console** window
+opens outside the main dashboard. It streams actual winget stdout and stderr
+(including carriage-return progress updates), timestamps the messages, shows
+verification of TShark and Npcap, and reports the final process exit code.
+The console keeps the full log available for copying after the operation.
+Its busy indicator does not invent a download percentage, and a separate
+interactive Wireshark setup wizard may still be shown by Windows.
 Installation opens the Wireshark installer interactively so you can select
 **Npcap** if needed; Administrator approval and an internet connection may be
 required. No third-party executable is downloaded directly by this app.

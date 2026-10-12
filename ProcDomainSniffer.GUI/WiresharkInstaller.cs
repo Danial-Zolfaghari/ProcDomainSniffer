@@ -1,18 +1,24 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace ProcDomainSniffer.GUI;
 
 /// <summary>
-/// Installs the official Wireshark package via the Windows Package Manager.
-/// Interactive mode is intentional: a silent Wireshark installation does not
-/// install Npcap, and users must be able to opt into the capture driver.
+/// Streams real output from winget. The Wireshark installer itself is launched
+/// interactively and may display its own setup wizard outside this process.
 /// </summary>
 internal static class WiresharkInstaller
 {
     internal sealed record InstallResult(int ExitCode, string Output);
 
-    public static async Task<InstallResult> InstallAsync()
+    internal const string CommandDescription =
+        "winget install --id WiresharkFoundation.Wireshark --exact --source winget " +
+        "--architecture x64 --interactive --accept-source-agreements --accept-package-agreements";
+
+    public static async Task<InstallResult> InstallAsync(Action<string, bool> onOutput)
     {
+        ArgumentNullException.ThrowIfNull(onOutput);
+
         var start = new ProcessStartInfo("winget.exe")
         {
             UseShellExecute = false,
@@ -39,13 +45,55 @@ internal static class WiresharkInstaller
         using var process = Process.Start(start)
             ?? throw new InvalidOperationException("Windows Package Manager (winget) could not be started.");
 
-        // Drain both streams concurrently to avoid process-output pipe deadlocks.
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        // Read both redirected pipes concurrently; ReadToEndAsync only delivered
+        // output after completion and hid download / installation progress.
+        var stdoutTask = StreamOutputAsync(process.StandardOutput, false, onOutput);
+        var stderrTask = StreamOutputAsync(process.StandardError, true, onOutput);
 
+        await process.WaitForExitAsync();
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
-        return new InstallResult(process.ExitCode, (stdout + "\n" + stderr).Trim());
+        return new InstallResult(process.ExitCode, (stdout + Environment.NewLine + stderr).Trim());
+    }
+
+    private static async Task<string> StreamOutputAsync(
+        StreamReader reader, bool isError, Action<string, bool> onOutput)
+    {
+        var capture = new StringBuilder();
+        var pending = new StringBuilder();
+        var buffer = new char[512];
+        int count;
+
+        // Winget sometimes uses carriage returns (not newlines) to update
+        // progress. Treat CR as an output boundary as well as LF.
+        while ((count = await reader.ReadAsync(buffer.AsMemory())) > 0)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var c = buffer[i];
+                if (c == '\r' || c == '\n')
+                {
+                    Flush();
+                }
+                else if (!char.IsControl(c) || c == '\t')
+                {
+                    pending.Append(c);
+                    if (pending.Length >= 1024) Flush();
+                }
+            }
+        }
+
+        Flush();
+        return capture.ToString();
+
+        void Flush()
+        {
+            if (pending.Length == 0) return;
+            var line = pending.ToString();
+            pending.Clear();
+            if (capture.Length < 128_000)
+                capture.AppendLine(line);
+            onOutput(line, isError);
+        }
     }
 }
